@@ -1,153 +1,165 @@
-# Aflatoxin Mind Map Generator
+# Elegant Mind Map Generator 🎨
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-[English](README_EN.md) | [简体中文](README.md)
+A Python-based knowledge visualization tool for generating elegant mind maps. Supports knowledge structure visualization for any topic with rich style customization options.
 
-An elegant knowledge map generator focused on visualizing aflatoxin-related information. Built with FastAPI and Graphviz, supporting high-quality PNG and PDF output formats.
+## Features ✨
 
-## ✨ Features
+- Generate mind maps for any topic
+- Multiple output formats (PNG, PDF)
+- Rich style customization options
+  - Node colors and shapes
+  - Connection line styles
+  - Fonts and layouts
+  - Direction and arrangement
+- Elegant visual effects
+- Automatic text wrapping
+- Multi-level node styling
 
-- 🎨 Elegant Visual Design
-  - Multi-level color scheme
-  - Adaptive node sizing
-  - Smart text wrapping
+## Installation 🚀
 
-- 📊 Professional Knowledge Structure
-  - Complete knowledge system
-  - Clear hierarchical relationships
-  - Accurate professional information
-
-- 🛠 Powerful Technical Features
-  - RESTful API interface
-  - High-resolution output
-  - Multiple format support (PNG/PDF)
-  - Comprehensive error handling
-
-## 🔧 System Requirements
+### System Dependencies
 
 - Python 3.8+
 - Graphviz
 - ImageMagick
 
-## 📦 Installation
+Install system dependencies on macOS:
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/aflatoxin-mindmap.git
-cd aflatoxin-mindmap
-```
-
-2. Install Python dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Install system dependencies:
-
-macOS:
 ```bash
 brew install graphviz imagemagick
 ```
 
-Ubuntu:
+### Python Dependencies
+
 ```bash
-sudo apt-get install graphviz imagemagick
+pip install -r requirements.txt
 ```
 
-## 🚀 Quick Start
+## Usage 📖
 
-1. Start the server:
+1. Start the server
+
 ```bash
-python mindmap_server.py
+uvicorn mindmap_server:app --host 0.0.0.0 --port 8081
 ```
 
-2. Generate mind map:
-```bash
-curl -X POST http://127.0.0.1:8081/generate_mindmap
-```
+2. Call the API to generate mind maps
 
-## 📝 API Documentation
-
-### Health Check
-```http
-GET /
-```
-Response: Server status information
+## API Interface 🔌
 
 ### Generate Mind Map
+
 ```http
 POST /generate_mindmap
 ```
-Response: Generated file path information
 
-## 📊 Knowledge Structure
+Generate custom themed mind maps with flexible style configuration.
 
-The generated mind map includes the following main sections:
+#### Request Example
 
-- Basic Characteristics
-  - Production Conditions
-  - Toxicity Features
-
-- Main Hazards
-  - Liver Damage
-  - Immune Suppression
-  - Other Effects
-
-- Contaminated Foods
-  - Cereals
-  - Nuts
-  - Dried Fruits
-
-- Prevention & Control
-  - Storage Management
-  - Processing
-  - Quality Testing
-
-## 🎨 Visualization
-
-- Root Node: Deep Blue (#2E86C1)
-- Main Categories: Medium Blue (#3498DB)
-- Sub Nodes: Light Blue (#5DADE2)
-- Connections: Lightest Blue (#85C1E9)
-
-## 🔧 Configuration Options
-
-The following can be customized in `mindmap_server.py`:
-
-- Node styles (colors, sizes, fonts)
-- Graph layout (direction, spacing)
-- Output quality (resolution, compression)
-
-## 📁 Project Structure
-
-```
-aflatoxin-mindmap/
-├── mindmap_server.py     # Main server code
-├── requirements.txt      # Python dependencies
-├── README.md            # Documentation (Chinese)
-├── README_EN.md         # Documentation (English)
-├── .gitignore           # Git ignore configuration
-└── output/              # Output directory
-    ├── mindmap.png      # PNG output
-    └── mindmap.pdf      # PDF output
+```json
+{
+  "title": "My Knowledge Map",
+  "content": "Core Concepts",
+  "nodes": [
+    {
+      "title": "Main Category",
+      "content": "Category Description",
+      "children": [
+        {
+          "title": "Subcategory 1",
+          "content": "Detailed Description",
+          "children": []
+        }
+      ]
+    }
+  ],
+  "style": {
+    "root_color": "#2E86C1",
+    "main_color": "#3498DB",
+    "sub_color": "#5DADE2",
+    "edge_color": "#85C1E9",
+    "font_family": "SimHei",
+    "direction": "TB",
+    "node_shape": "rect",
+    "line_style": "curved"
+  },
+  "output_format": "both"
+}
 ```
 
-## 🤝 Contributing
+#### Response Example
+
+```json
+{
+  "status": "success",
+  "message": "Mind map generated successfully",
+  "files": {
+    "png": "output/mindmap_20250217_180402.png",
+    "pdf": "output/mindmap_20250217_180402.pdf"
+  }
+}
+```
+
+## Project Structure 📁
+
+```
+.
+├── mindmap_server.py  # Main server implementation
+├── requirements.txt   # Project dependencies
+├── README.md         # Documentation (Chinese)
+├── README_EN.md      # Documentation (English)
+└── output/           # Generated mind map files
+```
+
+## License 📜
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Contributing 🤝
 
 Issues and Pull Requests are welcome!
 
-## 📄 License
+## Style Configuration Guide 🎯
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+### Node Styles
 
-## 👥 Authors
+- `root_color`: Root node color
+- `main_color`: Main category node color
+- `sub_color`: Sub-node color
+- `edge_color`: Connection line color
+- `font_family`: Font family
+- `direction`: Layout direction
+  - `TB`: Top to bottom
+  - `LR`: Left to right
+  - `RL`: Right to left
+  - `BT`: Bottom to top
+- `node_shape`: Node shape
+  - `rect`: Rectangle
+  - `ellipse`: Ellipse
+  - `diamond`: Diamond
+  - `box`: Box
+- `line_style`: Connection line style
+  - `curved`: Curved lines
+  - `spline`: Spline curves
+  - `ortho`: Orthogonal lines
+  - `line`: Straight lines
 
-- Author Name
+### Custom Node Styles
 
-## 🙏 Acknowledgments
+Each node can have custom styles via the `style` field:
 
-- FastAPI Team
-- Graphviz Project
-- ImageMagick Team
+```json
+{
+  "title": "Custom Node",
+  "content": "Description text",
+  "style": {
+    "fillcolor": "#FF0000",
+    "shape": "diamond",
+    "fontsize": "16"
+  }
+}
+```

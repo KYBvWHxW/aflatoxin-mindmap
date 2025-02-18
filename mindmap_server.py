@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import List, Optional
 import graphviz
 import json
 from pathlib import Path
@@ -8,292 +10,264 @@ import os
 import logging
 import sys
 import subprocess
+from datetime import datetime
 
 # Configure logging to output to stdout
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
+
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Aflatoxin Mind Map Server")
-
-@app.get("/")
-async def root():
-    return PlainTextResponse("Server is running")
+app = FastAPI(title="Elegant Mind Map Generator")
 
 class MindMapNode(BaseModel):
     title: str
-    content: str
-    children: list = []
+    content: str = ""
+    children: List["MindMapNode"] = []
+    style: Optional[dict] = Field(default_factory=dict)
 
-def create_mindmap(data: dict) -> graphviz.Digraph:
-    # Create a new graph with PNG settings
+class MindMapStyle(BaseModel):
+    root_color: str = "#2E86C1"  # 深蓝色
+    main_color: str = "#3498DB"  # 中蓝色
+    sub_color: str = "#5DADE2"   # 浅蓝色
+    edge_color: str = "#85C1E9"  # 最浅蓝色
+    font_family: str = "SimHei"  # 字体
+    direction: str = "TB"        # 布局方向 (TB, LR, RL, BT)
+    node_shape: str = "rect"     # 节点形状
+    line_style: str = "curved"   # 线条样式
+
+class MindMapRequest(BaseModel):
+    title: str
+    content: str = ""
+    nodes: List[MindMapNode]
+    style: Optional[MindMapStyle] = None
+    output_format: str = "both"  # "png", "pdf", or "both"
+
+def add_node(dot: graphviz.Digraph, node: MindMapNode, parent_id: str = None, level: int = 0, style: MindMapStyle = None) -> None:
+    """Add a node and its children to the graph with custom styling"""
+    # Create unique node ID
+    node_id = f"node_{id(node)}"
+    
+    # Get node color based on level and custom style
+    if level == 0:
+        color = style.root_color
+    elif level == 1:
+        color = style.main_color
+    else:
+        color = style.sub_color
+    
+    # Create node label with title and content
+    label = f"{node.title}"
+    if node.content:
+        label += f"\\n{node.content}"
+    
+    # Merge default styling with custom node style
+    node_style = {
+        'shape': style.node_shape,
+        'style': 'filled,rounded',
+        'fillcolor': color,
+        'fontname': style.font_family,
+        'fontsize': '14',
+        'height': '0.6',
+        'width': '2.0',
+        'penwidth': '2.0',
+        'color': color
+    }
+    
+    # Override with custom node style if provided
+    if node.style:
+        node_style.update(node.style)
+    
+    # Add node with styling
+    dot.node(
+        node_id,
+        label=label,
+        **node_style
+    )
+    
+    # Connect to parent if exists
+    if parent_id:
+        dot.edge(
+            parent_id,
+            node_id,
+            color=style.edge_color,
+            penwidth='2.0'
+        )
+    
+    # Add children recursively
+    for child in node.children:
+        add_node(dot, child, node_id, level + 1, style)
+
+def create_mindmap(request: MindMapRequest) -> graphviz.Digraph:
+    """Create a mind map based on the request"""
+    # Get style settings
+    style = request.style or MindMapStyle()
+    
+    # Create a new graph
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dot = graphviz.Digraph(
-        comment='Aflatoxin Mind Map',
+        comment=f'Mind Map - {request.title}',
         format='png',
         engine='dot',
         encoding='utf-8'
     )
     
-    # Set graph attributes for better output
-    dot.attr(layout='dot')
-    dot.attr(overlap='scale')
-    dot.attr(splines='curved')
-    dot.attr(dpi='300')
-    dot.attr(bgcolor='white')
-    
     # Set graph attributes
-    dot.attr(rankdir='TB')  # Top to bottom layout
-    dot.attr(ranksep='0.8')  # Increase vertical spacing
-    dot.attr(nodesep='0.5')  # Increase horizontal spacing
-    dot.attr(size='11,11')
+    dot.attr(
+        layout='dot',
+        overlap='scale',
+        splines=style.line_style,
+        dpi='300',
+        bgcolor='white',
+        rankdir=style.direction,
+        ranksep='0.8',
+        nodesep='0.5',
+        size='11,11'
+    )
     
-    # Color scheme
-    colors = {
-        'root': '#4B77BE',  # 深蓝色
-        'main': '#5DADE2',   # 浅蓝色
-        'sub': '#85C1E9'     # 最浅蓝色
-    }
+    # Add root node
+    root = MindMapNode(title=request.title, content=request.content)
+    add_node(dot, root, style=style)
     
-    # Set default node attributes
-    dot.attr('node', 
-        shape='box',
-        style='rounded,filled',
-        fontname='SimSun',     # 中文字体
-        fontsize='14',
-        height='0.6',
-        margin='0.3,0.2',
-        penwidth='2')
+    # Add main nodes
+    for node in request.nodes:
+        add_node(dot, node, f"node_{id(root)}", level=1, style=style)
     
-    def add_nodes(node: dict, parent_id=None, level=0):
-        node_id = str(abs(hash(node['title'])))
-        
-        # Node styling based on level
-        if level == 0:
-            # Root node
-            color = colors['root']
-            fontsize = '16'
-            width = '3.0'
-            height = '0.8'
-            margin = '0.5,0.4'
-        elif level == 1:
-            # Main category nodes
-            color = colors['main']
-            fontsize = '14'
-            width = '2.5'
-            height = '0.7'
-            margin = '0.4,0.3'
-        else:
-            # Sub nodes
-            color = colors['sub']
-            fontsize = '13'
-            width = '2.0'
-            height = '0.6'
-            margin = '0.3,0.2'
-        
-        # Format label
-        title = node['title'].strip()
-        content = node['content'].strip()
-        if content:
-            # Split content into lines if too long
-            if len(content) > 15:
-                words = content.split()
-                lines = []
-                current_line = []
-                current_length = 0
-                
-                for word in words:
-                    if current_length + len(word) > 15:
-                        lines.append(' '.join(current_line))
-                        current_line = [word]
-                        current_length = len(word)
-                    else:
-                        current_line.append(word)
-                        current_length += len(word) + 1
-                
-                if current_line:
-                    lines.append(' '.join(current_line))
-                content = '\n'.join(lines)
-            label = f"{title}\n{content}"
-        else:
-            label = title
-        
-        # Create node
-        dot.node(node_id, label,
-            fillcolor=color,
-            fontcolor='white',
-            fontsize=fontsize,
-            width=width,
-            height=height,
-            margin=margin)
-        
-        # Create edge
-        if parent_id:
-            dot.edge(parent_id, node_id,
-                color=colors['sub'],
-                penwidth='1.2',
-                arrowsize='0.6',
-                arrowhead='normal')
-        
-        # Process children
-        for child in node.get('children', []):
-            add_nodes(child, node_id, level + 1)
-    
-    add_nodes(data)
     return dot
 
 def check_dependencies():
     """Check if required system dependencies are installed"""
     try:
         # Check Graphviz
-        import shutil
-        if not shutil.which('dot'):
-            raise RuntimeError("Graphviz is not installed. Please install it first.")
+        result = subprocess.run(['dot', '-V'], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception("Graphviz is not installed")
+        logger.info("Graphviz check passed")
         
         # Check ImageMagick
-        if not shutil.which('convert'):
-            raise RuntimeError("ImageMagick is not installed. Please install it first.")
-            
-        logger.info("All system dependencies are available")
-        return True
-    except Exception as e:
+        result = subprocess.run(['convert', '-version'], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception("ImageMagick is not installed")
+        logger.info("ImageMagick check passed")
+        
+    except FileNotFoundError as e:
         logger.error(f"Dependency check failed: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"System dependency check failed: {str(e)}"
         )
 
+# Add CORS support
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    """Health check endpoint"""
+    return {"status": "healthy", "message": "Mind Map Generator is running"}
+
 @app.post("/generate_mindmap")
-async def generate_mindmap():
-    logger.info("Received request to generate mind map")
+async def generate_mindmap(request: MindMapRequest):
+    """Generate a mind map based on the request"""
+    logger.info(f"Received request to generate mind map: {request.title}")
     
-    # Check dependencies first
+    # Check dependencies
     check_dependencies()
     
     # Ensure output directory exists
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
     
-    # Define the mind map structure
-    mindmap_data = {
-        "title": "黄曲霉素",
-        "content": "真菌毒素",
-        "children": [
-            {
-                "title": "基本特征",
-                "content": "由黄曲霉菌产生的致癌毒素",
-                "children": [
-                    {"title": "产生条件", "content": "潮湿高温环境", "children": []},
-                    {"title": "毒性特点", "content": "强致癌性和蓄积性", "children": []}
-                ]
-            },
-            {
-                "title": "主要危害",
-                "content": "多系统损害",
-                "children": [
-                    {"title": "肝脏损害", "content": "可致肝癌，肝硬化", "children": []},
-                    {"title": "免疫抑制", "content": "降低机体抵抗力", "children": []},
-                    {"title": "其他影响", "content": "神经系统和肾脏损害", "children": []}
-                ]
-            },
-            {
-                "title": "易污染食物",
-                "content": "多种农产品",
-                "children": [
-                    {"title": "谷物类", "content": "玉米、大米、小麦", "children": []},
-                    {"title": "坚果类", "content": "花生、核桃、杏仁", "children": []},
-                    {"title": "干果类", "content": "葡萄干、枣干", "children": []}
-                ]
-            },
-            {
-                "title": "预防控制",
-                "content": "全程防控",
-                "children": [
-                    {"title": "储存管理", "content": "控制温湿度，保持通风", "children": []},
-                    {"title": "加工处理", "content": "筛选分级，及时晾晒", "children": []},
-                    {"title": "质量检测", "content": "定期抽检，严格把关", "children": []}
-                ]
-            }
-        ]
-    }
-    
     try:
+        # Create mind map
         logger.info("Creating mind map...")
-        dot = create_mindmap(mindmap_data)
+        dot = create_mindmap(request)
         
-        # Save PNG version
-        output_path = output_dir / "mindmap"
-        logger.info(f"Rendering PNG to {output_path}.png")
-        try:
-            dot.render(str(output_path), cleanup=True)
-        except Exception as e:
-            logger.error(f"Failed to generate PNG: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to generate PNG: {str(e)}"
-            )
+        # Generate unique filenames with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_filename = f"mindmap_{timestamp}"
+        output_path = output_dir / base_filename
         
-        # Convert PNG to PDF using ImageMagick
-        png_path = output_path.with_suffix(".png")
-        pdf_path = output_path.with_suffix(".pdf")
+        # Generate PNG
+        png_path = None
+        if request.output_format in ["png", "both"]:
+            logger.info(f"Rendering PNG to {output_path}.png")
+            try:
+                dot.render(str(output_path), cleanup=True)
+                png_path = output_path.with_suffix(".png")
+            except Exception as e:
+                logger.error(f"Failed to generate PNG: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to generate PNG: {str(e)}"
+                )
         
-        if not png_path.exists():
-            error_msg = "PNG file was not generated"
-            logger.error(error_msg)
-            raise HTTPException(status_code=500, detail=error_msg)
+        # Generate PDF if requested
+        pdf_path = None
+        if request.output_format in ["pdf", "both"]:
+            if not png_path or not png_path.exists():
+                error_msg = "PNG file is required for PDF conversion"
+                logger.error(error_msg)
+                raise HTTPException(status_code=500, detail=error_msg)
+            
+            pdf_path = output_path.with_suffix(".pdf")
+            logger.info("Converting PNG to PDF using ImageMagick")
+            try:
+                result = subprocess.run(
+                    [
+                        'convert',
+                        '-density', '300',  # High resolution
+                        '-quality', '100',  # Best quality
+                        str(png_path),
+                        '-compress', 'lzw',  # Better compression
+                        str(pdf_path)
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+            except subprocess.CalledProcessError as e:
+                logger.error(f"ImageMagick conversion failed: {e.stderr}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"PDF conversion failed: {e.stderr}"
+                )
         
-        logger.info("Converting PNG to PDF using ImageMagick")
-        try:
-            result = subprocess.run(
-                [
-                    'convert',
-                    '-density', '300',  # High resolution
-                    '-quality', '100',  # Best quality
-                    str(png_path),
-                    '-compress', 'lzw',  # Better compression
-                    str(pdf_path)
-                ],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-        except subprocess.CalledProcessError as e:
-            logger.error(f"ImageMagick conversion failed: {e.stderr}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"PDF conversion failed: {e.stderr}"
-            )
-        
-        if not pdf_path.exists():
-            error_msg = "PDF file was not generated"
-            logger.error(error_msg)
-            raise HTTPException(status_code=500, detail=error_msg)
-        
-        logger.info("Files generated successfully")
-        return JSONResponse(content={
+        # Prepare response
+        response = {
             "status": "success",
             "message": "Mind map generated successfully",
-            "files": {
-                "png": str(png_path),
-                "pdf": str(pdf_path)
-            }
-        })
-            
+            "files": {}
+        }
+        
+        if png_path and png_path.exists():
+            response["files"]["png"] = str(png_path)
+        if pdf_path and pdf_path.exists():
+            response["files"]["pdf"] = str(pdf_path)
+        
+        logger.info("Files generated successfully")
+        return JSONResponse(content=response)
+        
     except Exception as e:
-        error_msg = f"Error generating mind map: {str(e)}"
-        logger.error(error_msg)
-        raise HTTPException(status_code=500, detail=error_msg)
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate mind map: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
-    # Configure CORS and other settings
     uvicorn.run(
         "mindmap_server:app",
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=8081,
-        reload=True,
-        log_level="info",
-        access_log=True
+        reload=True
     )
